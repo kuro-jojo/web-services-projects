@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-ChatroomRestApplication<chatroom-rest>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.kuro.chatroom.server.ChatroomRestApplication",
+      "projectName": "chatroom-rest",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-ChatUser<chatroom-rest>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.kuro.chatroom.client.ChatUser",
+      "projectName": "chatroom-rest",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

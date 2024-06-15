@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,12 +28,13 @@ public class ChatroomController {
     private final Set<String> subscribedUsers = new HashSet<>();
     private final List<Instant> instants = new ArrayList<>();
 
-    @GetMapping("/subscribe/{pseudo}")
-    public ResponseEntity<String> subscribe(@PathVariable("pseudo") String username) {
-        if (subscribedUsers.contains(username)) {
+    @PostMapping("/subscribe")
+    public ResponseEntity<String> subscribe(@RequestBody String pseudo) {
+        if (subscribedUsers.contains(pseudo)) {
+            System.out.println("Users: " + subscribedUsers.toString());
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Username already taken");
         }
-        subscribedUsers.add(username);
+        subscribedUsers.add(pseudo);
         return ResponseEntity.ok("Connected");
     }
 
@@ -61,17 +63,20 @@ public class ChatroomController {
     @GetMapping("/messages")
     public ResponseEntity<List<Message>> getMessages(
             @RequestParam("bef") Date before,
-            @RequestParam(value = "time", required = false) long time) {
+            @RequestParam(value = "time", required = false) long time,
+            @RequestHeader(value = "Authorization", required = true) String pseudo) {
 
+        if (!subscribedUsers.contains(pseudo)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         if (time == 0) {
             return ResponseEntity.ok(messages);
         }
         List<Message> messagesToSend = new ArrayList<>();
         for (int i = 0; i < instants.size(); i++) {
-            System.out.println(
-                    "before: " + (messages.get(i).getSentAt().getTime() < before.getTime()) + " time: " + " instants: "
-                            + (instants.get(i).toEpochMilli() > time) + " messages: " + messages.get(i).getContent());
-            if (instants.get(i).toEpochMilli() > time && messages.get(i).getSentAt().getTime() > before.getTime()) {
+            if (instants.get(i).toEpochMilli() > time
+                    && (messages.get(i).getSentAt().getTime() > before.getTime()
+                            || messages.get(i).getPseudo().equals("INFO"))) {
                 messagesToSend.add(messages.get(i));
             }
         }

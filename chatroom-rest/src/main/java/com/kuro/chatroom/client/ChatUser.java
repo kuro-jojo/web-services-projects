@@ -2,6 +2,7 @@ package com.kuro.chatroom.client;
 
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import com.kuro.chatroom.Message;
@@ -99,30 +100,6 @@ public class ChatUser {
         btnSend.setEnabled(false);
     }
 
-    public void btnJoin_actionPerformed(ActionEvent e) {
-        try {
-            ResponseEntity<String> responseEntity = restTemplate.getForEntity(baseUrl + "/subscribe/" + user.getPseudo(),
-                    String.class);
-            if (responseEntity.getStatusCode() == HttpStatus.OK) {
-                restTemplate.postForEntity(baseUrl + "/messages",
-                        new Message("INFO", this.user.getPseudo() + " joined the chat room"),
-                        Void.class);
-                txtMessage.setEnabled(true);
-                user.setJoinedAt(new Date());
-            } else if (responseEntity.getStatusCode() == HttpStatus.CONFLICT) {
-                JOptionPane.showMessageDialog(this.window, "Pseudo existe deja! Veuillez en choisir un autre");
-                requestPseudo();
-            }
-        } catch (Exception ex) {
-            System.out.println("Error while joining chat: " + ex.getMessage());
-        }
-        startPolling();
-    }
-
-    public void btnQuit_actionPerformed(ActionEvent e) {
-        window_windowClosing(null);
-    }
-
     public void requestPseudo() {
         this.user.setPseudo(JOptionPane.showInputDialog(
                 this.window, "Entrez votre pseudo : ",
@@ -131,6 +108,40 @@ public class ChatUser {
             System.exit(0);
 
         System.out.println(this.user.getPseudo() + " added successfully to the server.");
+    }
+
+    public void btnJoin_actionPerformed(ActionEvent e) {
+        try {
+            ResponseEntity<String> responseEntity = restTemplate.postForEntity(baseUrl + "/subscribe", user.getPseudo(),
+                    String.class);
+            if (responseEntity.getStatusCode() == HttpStatus.OK) {
+                restTemplate.postForEntity(baseUrl + "/messages",
+                        new Message("INFO", this.user.getPseudo() + " joined the chat room"),
+                        Void.class);
+                txtMessage.setEnabled(true);
+                user.setJoinedAt(new Date());
+            }
+        } catch (RestClientException ex) {
+            System.out.println("Error while joining chat: " + ex.getMessage());
+            if (ex.getMessage().contains("409")) {
+                JOptionPane.showMessageDialog(this.window, "Pseudo \"" + user.getPseudo() + "\" is already taken",
+                        this.title, JOptionPane.ERROR_MESSAGE);
+                requestPseudo();
+            }
+        }
+        pollMessages();
+    }
+
+    public void btnSend_actionPerformed(ActionEvent e) {
+        String message = this.txtMessage.getText();
+        restTemplate.postForEntity(baseUrl + "/messages", new Message(user.getPseudo(), message), Void.class);
+        this.txtMessage.setText("");
+        btnSend.setEnabled(false);
+        this.txtMessage.requestFocus();
+    }
+
+    public void btnQuit_actionPerformed(ActionEvent e) {
+        window_windowClosing(null);
     }
 
     public void window_windowClosing(WindowEvent e) {
@@ -149,28 +160,31 @@ public class ChatUser {
                 Void.class);
     }
 
-    public void startPolling() {
+    public void pollMessages() {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
             List<Message> messages = receiveMessages();
-            if (!messages.isEmpty()) {
-                for (Message message : messages) {
-                    if (message.getPseudo().equals(user.getPseudo())) {
-                        txtOutput.append("You : " + message.getContent() + "\n");
-                    } else {
-                        txtOutput.append(message.getPseudo() + " : " + message.getContent() + "\n");
-                    }
-                }
-            }
+            messages.stream()
+                    .map(message -> message.getPseudo().equals(user.getPseudo())
+                            ? "You : " + message.getContent() + "\n"
+                            : message.getPseudo() + " : " + message.getContent() + "\n")
+                    .forEach(txtOutput::append);
         }, 0, REFRESH_RATE, TimeUnit.SECONDS);
     }
 
-    public List<Message> receiveMessages() {
+    private List<Message> receiveMessages() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", user.getPseudo());
+
+        HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
+
         ResponseEntity<List<Message>> responseEntity = restTemplate.exchange(
-                baseUrl + "/messages?time=" + lastUpdate.toEpochMilli() + "&bef=" + user.getJoinedAt(), HttpMethod.GET,
-                null,
+                baseUrl + "/messages?time=" + lastUpdate.toEpochMilli() + "&bef=" + user.getJoinedAt(),
+                HttpMethod.GET,
+                entity,
                 new ParameterizedTypeReference<List<Message>>() {
                 });
+
         if (responseEntity.getStatusCode() == HttpStatus.OK) {
             lastUpdate = Instant.now();
             return responseEntity.getBody();
@@ -178,15 +192,8 @@ public class ChatUser {
         return new ArrayList<>();
     }
 
-    public void btnSend_actionPerformed(ActionEvent e) {
-        String message = this.txtMessage.getText();
-        restTemplate.postForEntity(baseUrl + "/messages", new Message(user.getPseudo(), message), Void.class);
-        this.txtMessage.setText("");
-        btnSend.setEnabled(false);
-        this.txtMessage.requestFocus();
-    }
-
     public static void main(String[] args) {
+        new ChatUser();
         new ChatUser();
         new ChatUser();
     }
